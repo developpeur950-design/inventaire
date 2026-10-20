@@ -97,7 +97,8 @@ def fetch(url, limit, timeout=8, headers=None):
 
 def _bing(query, n):
     page = fetch("https://www.bing.com/images/search?form=HDRSC2&first=1&q="
-                 + quote_plus(query), MAX_PAGE).decode("utf-8", "replace")
+                 + quote_plus(query), MAX_PAGE,
+                 headers={"Cookie": "SRCHHPGUSR=ADLT=MODERATE"}).decode("utf-8", "replace")
     out = []
     for m in re.finditer(r'\bm="(\{[^"]*\})"', page):
         try:
@@ -107,9 +108,10 @@ def _bing(query, n):
         urls = [u for u in (info.get("turl"), info.get("murl")) if u]
         if urls:
             out.append({"thumb": urls[0], "urls": urls})
-            if len(out) >= n:
-                break
-    return out
+    if not out:  # mise en page différente : on cherche directement les liens d'images
+        for murl in re.findall(r'"murl":"(https?://[^"]+)"', html.unescape(page)):
+            out.append({"thumb": murl, "urls": [murl]})
+    return out[:n]
 
 
 def _duckduckgo(query, n):
@@ -125,6 +127,17 @@ def _duckduckgo(query, n):
     out = []
     for r in data.get("results", [])[:n]:
         urls = [u for u in (r.get("thumbnail"), r.get("image")) if u]
+        if urls:
+            out.append({"thumb": urls[0], "urls": urls})
+    return out
+
+
+def _openverse(query, n):
+    data = json.loads(fetch("https://api.openverse.org/v1/images/?page_size=%d&q=%s"
+                            % (n, quote_plus(query)), MAX_PAGE))
+    out = []
+    for r in data.get("results", []):
+        urls = [u for u in (r.get("thumbnail"), r.get("url")) if u]
         if urls:
             out.append({"thumb": urls[0], "urls": urls})
     return out
@@ -146,19 +159,60 @@ def _commons(query, n):
     return out
 
 
-def search_images(query, n=12):
-    """Essaie plusieurs moteurs, s'arrête au premier qui donne des résultats."""
+ENGINES = (_bing, _duckduckgo, _openverse, _commons)  # par ordre de préférence
+_cache = {}
+_cache_lock = threading.Lock()
+
+
+def query_variants(query):
+    """La requête, puis des versions simplifiées si rien n'est trouvé."""
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", query).encode("ascii", "ignore").decode()
+    plain = " ".join(re.sub(r"[^\w./+-]+", " ", plain).split())
+    words = plain.split()
+    out = []
+    for q in (query, plain, " ".join(words[:2]), words[0] if words else ""):
+        if q and q not in out:
+            out.append(q)
+    return out
+
+
+def _search_all(query, n):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(len(ENGINES)) as pool:
+        futures = [pool.submit(engine, query, n) for engine in ENGINES]
+    results, seen = [], set()
+    for f in futures:
+        try:
+            found = f.result()
+        except Exception:
+            continue
+        for r in found:
+            if r["thumb"] not in seen:
+                seen.add(r["thumb"])
+                results.append(r)
+    return results
+
+
+def search_images(query, n=10):
+    """Interroge tous les moteurs en parallèle et fusionne les résultats."""
     query = clean(query, 200)
     if not query:
         return []
-    for engine in (_bing, _duckduckgo, _commons):
-        try:
-            results = engine(query, n)
-        except Exception:
-            continue
+    with _cache_lock:
+        if query in _cache:
+            return _cache[query]
+    results = []
+    for q in query_variants(query):
+        results = _search_all(q, n)[:16]
         if results:
-            return results
-    return []
+            break
+    if results:
+        with _cache_lock:
+            if len(_cache) >= 40:
+                _cache.pop(next(iter(_cache)))
+            _cache[query] = results
+    return results
 
 
 # --------------------------------------------------------------------------- #
@@ -166,7 +220,7 @@ def search_images(query, n=12):
 # --------------------------------------------------------------------------- #
 
 def wants_image(payload):
-    return bool(payload.get("image_data") or payload.get("image_urls"))
+    return bool(payload.get("image_data") or payload.get("image_urls") or payload.get("auto_image"))
 
 
 class Store:
@@ -242,7 +296,12 @@ class Store:
             if not sniff(data):
                 raise ApiError(400, "Format d'image non supporté")
         else:
-            for url in (payload.get("image_urls") or [])[:4]:
+            urls = list(payload.get("image_urls") or [])[:8]
+            if payload.get("auto_image") and payload.get("name"):
+                # Aucune image choisie : on prend les premiers résultats de recherche.
+                for r in search_images(payload["name"])[:4]:
+                    urls.extend(r["urls"])
+            for url in urls:
                 try:
                     candidate = fetch(str(url), MAX_IMAGE)
                 except Exception:
@@ -519,70 +578,89 @@ def is_tailscale_ip(ip):
     return a == 100 and 64 <= b <= 127  # plage CGNAT 100.64.0.0/10
 
 
+TAILSCALE_CLI = ("tailscale", r"C:\Program Files\Tailscale\tailscale.exe",
+                 "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+
+
 def tailscale_info():
     """Retourne (ip, nom_magicdns) de cette machine sur Tailscale, ou (None, None)."""
-    try:
-        out = subprocess.run(["tailscale", "status", "--json"], capture_output=True,
-                             timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        me = json.loads(out.stdout or b"{}").get("Self") or {}
+    for cli in TAILSCALE_CLI:
+        try:
+            out = subprocess.run([cli, "status", "--json"], capture_output=True, timeout=5,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            me = json.loads(out.stdout or b"{}").get("Self") or {}
+        except (OSError, ValueError, subprocess.SubprocessError):
+            continue
         ips = [ip for ip in me.get("TailscaleIPs") or [] if is_tailscale_ip(ip)]
         if ips:
             return ips[0], (me.get("DNSName") or "").rstrip(".") or None
-    except (OSError, ValueError, subprocess.SubprocessError):
-        pass
-    # Sans la commande tailscale : quelle IP locale sert à joindre le DNS Tailscale ?
+    # Sans la commande tailscale : on cherche une adresse 100.64.0.0/10 sur la machine.
+    candidates = []
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("100.100.100.100", 53))
-            ip = s.getsockname()[0]
-        if is_tailscale_ip(ip):
-            return ip, None
+            candidates.append(s.getsockname()[0])
     except OSError:
         pass
+    try:
+        candidates += socket.gethostbyname_ex(socket.gethostname())[2]
+    except OSError:
+        pass
+    for ip in candidates:
+        if is_tailscale_ip(ip):
+            return ip, None
     return None, None
+
+
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_lan = False
+
+    def verify_request(self, request, client_address):
+        # Seuls ce PC et les appareils Tailscale peuvent se connecter (sauf --lan).
+        ip = client_address[0]
+        return self.allow_lan or ip.startswith("127.") or ip == "::1" or is_tailscale_ip(ip)
 
 
 def main():
     ap = argparse.ArgumentParser(description="Serveur d'inventaire")
-    ap.add_argument("--port", type=int, default=8080)
-    ap.add_argument("--host", action="append",
-                    help="adresse d'écoute (répétable). Défaut : 127.0.0.1 + IP Tailscale")
+    ap.add_argument("--port", type=int, default=8080, help="port (8080 par défaut)")
+    ap.add_argument("--lan", action="store_true",
+                    help="autoriser aussi les appareils du réseau local (Wi-Fi)")
     ap.add_argument("--data", default=os.path.join(BASE_DIR, "inventaire.json"),
                     help="fichier JSON des données")
     args = ap.parse_args()
 
     Handler.store = Store(os.path.abspath(args.data))
-    hosts = list(args.host or ["127.0.0.1"])
-    ts_ip, ts_name = (None, None) if args.host else tailscale_info()
-    if ts_ip:
-        hosts.append(ts_ip)
-
-    servers = []
-    for host in hosts:
-        try:
-            servers.append(ThreadingHTTPServer((host, args.port), Handler))
-        except OSError as e:
-            print("  ! Impossible d'écouter sur %s:%d (%s)" % (host, args.port, e))
-    if not servers:
+    Server.allow_lan = args.lan
+    try:
+        server = Server(("0.0.0.0", args.port), Handler)
+    except OSError as e:
+        print("Impossible de démarrer sur le port %d (%s)." % (args.port, e))
+        print("Le serveur tourne peut-être déjà, ou essayez : python inventaire.py --port 8081")
         sys.exit(1)
 
-    print("Inventaire démarré  (Ctrl+C pour arrêter)")
-    for s in servers:
-        host = s.server_address[0]
-        label = "Tailscale" if host == ts_ip else "Adresse"
-        print("  %-10s http://%s:%d" % (label, "localhost" if host == "127.0.0.1" else host, args.port))
-    if ts_name:
-        print("  %-10s http://%s:%d" % ("MagicDNS", ts_name, args.port))
-    if not ts_ip and not args.host:
-        print("  (Tailscale non détecté : relancez une fois Tailscale connecté)")
-    print("  Données    %s" % Handler.store.path)
-
-    for s in servers[1:]:
-        threading.Thread(target=s.serve_forever, daemon=True).start()
+    ts_ip, ts_name = tailscale_info()
+    print()
+    print("  Inventaire lancé")
+    print()
+    print("  Sur ce PC  : http://localhost:%d" % args.port)
+    if ts_ip:
+        print("  Tailscale  : http://%s:%d" % (ts_ip, args.port))
+        if ts_name:
+            print("               http://%s:%d" % (ts_name, args.port))
+    else:
+        print("  Tailscale  : non détecté (connectez Tailscale puis relancez pour voir l'adresse)")
+    if args.lan:
+        print("  Réseau local autorisé")
+    print()
+    print("  Données    : %s" % Handler.store.path)
+    print("  Laissez cette fenêtre ouverte. Ctrl+C pour arrêter.")
+    print()
     try:
-        servers[0].serve_forever()
+        server.serve_forever()
     except KeyboardInterrupt:
-        print("\nArrêt.")
+        print("Arrêt.")
 
 
 if __name__ == "__main__":
