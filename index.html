@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Inventaire</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='5' fill='%23ffad1f'/%3E%3Cpath d='M7 12h10M12 7v10' stroke='%23000' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#000; --card:#141414; --card-2:#1d1d1d; --line:#2b2b2b; --hover:#262626;
+  --accent:#ffad1f; --text:#f3efe6; --muted:#9b978d; --danger:#ff6058;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{min-height:100vh;font-size:15px;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{background:var(--card-2);border:1px solid var(--line);border-radius:10px;height:40px;padding:0 12px;outline:none;min-width:0}
+input:focus,select:focus{border-color:var(--accent)}
+input::placeholder{color:#6f6c64}
+select{appearance:none;-webkit-appearance:none;padding-right:32px;text-overflow:ellipsis;cursor:pointer;
+  background:var(--card-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ffad1f' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 11px center/11px}
+option{background:var(--card);color:var(--text)}
+option.add{color:var(--accent);font-weight:bold}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=search]::-webkit-search-cancel-button{filter:invert(1) brightness(.7)}
+
+.btn{height:40px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card-2);font-weight:bold;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#000}
+.btn.primary:disabled{opacity:.4;cursor:not-allowed}
+.btn.danger{background:none;color:var(--danger);border-color:#4a2422}
+.btn.danger:hover{border-color:var(--danger)}
+.btn.ghost{background:none}
+.btn.small{height:34px;padding:0 12px;font-size:13px}
+.icon-btn{width:34px;height:34px;flex:none;border:0;border-radius:8px;background:none;color:var(--muted);display:grid;place-items:center}
+.icon-btn:hover{color:var(--accent);background:var(--hover)}
+.icon-btn svg{width:18px;height:18px}
+
+/* En-tête */
+.top{position:sticky;top:0;z-index:5;background:rgba(0,0,0,.9);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid #1b1b1b}
+.top-inner{max-width:1400px;margin:0 auto;padding:14px 18px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+h1{margin:0;font-size:22px;color:var(--accent);white-space:nowrap}
+.count{font-size:13px;color:var(--muted);font-weight:normal;margin-left:8px}
+.tools{flex:1;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.search{flex:1 1 260px;max-width:480px;position:relative}
+.search input{width:100%;padding-left:38px;background:var(--card)}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:var(--muted);pointer-events:none}
+.tools select{background-color:var(--card);max-width:220px}
+
+/* Fiches */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;padding:18px;max-width:1400px;margin:0 auto 110px}
+.card{position:relative;min-width:0;display:flex;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;transition:border-color .15s}
+.card:hover{border-color:#3a3a3a}
+.thumb{flex:none;width:96px;height:96px;border-radius:10px;overflow:hidden;background:var(--card-2);display:grid;place-items:center;cursor:pointer}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb svg,.preview svg{width:40px;height:40px;color:#4a4740}
+.body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:10px}
+.name{margin:3px 30px 0 0;font-size:17px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.row{display:flex;gap:8px;align-items:center}
+.qty{display:inline-flex;flex:none;align-items:center;border:1px solid var(--line);border-radius:10px;background:var(--card-2);overflow:hidden}
+.qty:focus-within{border-color:var(--accent)}
+.qty button{width:36px;height:38px;border:0;background:none;color:var(--accent);font-size:22px;line-height:1;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.qty button:hover{background:var(--hover)}
+.qty input{width:54px;height:38px;border:0;border-radius:0;padding:0 2px;background:none;text-align:center;font-size:16px;font-weight:bold}
+.qty input.zero{color:var(--danger)}
+.row select{flex:1;height:40px}
+.dots{position:absolute;top:6px;right:4px}
+
+.empty{text-align:center;color:var(--muted);padding:60px 20px;font-size:16px;line-height:1.6}
+.empty b{color:var(--accent)}
+
+.fab{position:fixed;right:22px;bottom:calc(22px + env(safe-area-inset-bottom));z-index:6;width:62px;height:62px;border-radius:50%;border:0;background:var(--accent);color:#000;display:grid;place-items:center;box-shadow:0 6px 26px rgba(255,173,31,.35);transition:transform .15s}
+.fab:hover{transform:scale(1.07)}
+.fab svg{width:28px;height:28px}
+
+/* Fenêtres */
+dialog.dlg{border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--text);padding:0;width:min(560px,calc(100vw - 20px));max-height:calc(100dvh - 20px)}
+dialog.dlg.narrow{width:min(400px,calc(100vw - 20px))}
+dialog::backdrop{background:rgba(0,0,0,.75);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.dlg form,.dlg .pad{padding:18px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.dlg-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dlg-head h2{margin:0;font-size:19px}
+.dlg p{margin:0;color:var(--muted);line-height:1.5}
+.field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.field>span{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:bold}
+.field>input{width:100%}
+input.bad{border-color:var(--danger)}
+.err{color:var(--danger);font-size:13px}
+.err:empty{display:none}
+.img-pick{display:flex;gap:12px}
+.preview{flex:none;width:112px;height:112px;border-radius:12px;background:var(--card-2);border:1px solid var(--line);overflow:hidden;display:grid;place-items:center}
+.preview img{width:100%;height:100%;object-fit:cover;display:block}
+.img-tools{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.img-search{display:flex;gap:6px}
+.img-search input{flex:1}
+.img-actions{display:flex;gap:6px;flex-wrap:wrap}
+.results{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:8px;max-height:176px;overflow:auto}
+.results:empty{display:none}
+.results .hint{grid-column:1/-1;color:var(--muted);font-size:13px;margin:4px 0}
+.res{aspect-ratio:1;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:var(--card-2)}
+.res img{width:100%;height:100%;object-fit:cover;display:block}
+.res:hover{border-color:#5a4a2a}
+.res.on{border-color:var(--accent)}
+.row2{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.row2 .grow{flex:1;min-width:170px}
+.row2 select{width:100%}
+.qty.big input{width:72px}
+.dlg-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+.loc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
+.loc-list li{display:flex;align-items:center;gap:6px;background:var(--card-2);border:1px solid var(--line);border-radius:10px;padding:5px 5px 5px 12px}
+.loc-list .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc-list small{color:var(--muted);white-space:nowrap}
+
+.toast{position:fixed;left:50%;bottom:104px;z-index:50;transform:translate(-50%,16px);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+  background:#1f1f1f;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:12px 16px;max-width:calc(100vw - 32px);box-shadow:0 8px 30px rgba(0,0,0,.6)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.bad{border-left-color:var(--danger)}
+
+@media (max-width:640px){
+  .top-inner{padding:12px}
+  .tools{justify-content:stretch}
+  .search{flex-basis:100%;max-width:none}
+  .tools select{flex:1;max-width:none}
+  .tools .btn{flex:none}
+  .grid{grid-template-columns:minmax(0,1fr);padding:10px;gap:10px}
+  input,select{font-size:16px}
+  .thumb{width:84px;height:84px}
+  .img-pick{flex-direction:column}
+  .preview{width:100%;height:150px}
+  .fab{right:16px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <h1>Inventaire<span id="count" class="count"></span></h1>
+    <div class="tools">
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Rechercher un objet ou un lieu…" autocomplete="off" aria-label="Rechercher">
+      </label>
+      <select id="filterLoc" aria-label="Filtrer par lieu"></select>
+      <select id="sort" aria-label="Trier">
+        <option value="name">Nom A → Z</option>
+        <option value="name-desc">Nom Z → A</option>
+        <option value="qty-desc">Quantité décroissante</option>
+        <option value="qty">Quantité croissante</option>
+        <option value="loc">Par lieu</option>
+        <option value="recent">Ajouts récents</option>
+        <option value="updated">Modifiés récemment</option>
+      </select>
+      <button id="manageLocs" class="btn" type="button" title="Gérer les lieux">Lieux</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" hidden></div>
+</main>
+
+<button id="fab" class="fab" type="button" title="Ajouter un objet" aria-label="Ajouter un objet">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg>
+</button>
+
+<template id="cardTpl">
+  <article class="card">
+    <div class="thumb" title="Modifier"></div>
+    <div class="body">
+      <h3 class="name"></h3>
+      <div class="row">
+        <div class="qty">
+          <button type="button" class="minus" aria-label="Retirer un">−</button>
+          <input type="number" min="0" inputmode="numeric" aria-label="Quantité">
+          <button type="button" class="plus" aria-label="Ajouter un">+</button>
+        </div>
+        <select class="loc" aria-label="Lieu"></select>
+      </div>
+    </div>
+    <button type="button" class="icon-btn dots" aria-label="Modifier" title="Modifier">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button>
+  </article>
+</template>
+
+<template id="noImg">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>
+</template>
+
+<!-- Ajout / modification d'un objet -->
+<dialog id="itemDlg" class="dlg">
+  <form id="itemForm" novalidate>
+    <div class="dlg-head">
+      <h2 id="itemTitle">Nouvel objet</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Fermer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <label class="field">
+      <span>Nom</span>
+      <input id="fName" maxlength="120" autocomplete="off" placeholder="Ex. : NE555, ESP32, Tournevis…">
+      <small id="fNameErr" class="err"></small>
+    </label>
+    <div class="field">
+      <span>Image</span>
+      <div class="img-pick">
+        <div id="fPreview" class="preview"></div>
+        <div class="img-tools">
+          <div class="img-search">
+            <input id="fImgQ" type="search" placeholder="Recherche internet ou URL d'image" autocomplete="off">
+            <button type="button" id="fImgGo" class="btn">Chercher</button>
+          </div>
+          <div class="img-actions">
+            <button type="button" id="fUpload" class="btn ghost small">Depuis l'appareil</button>
+            <button type="button" id="fNoImg" class="btn ghost small">Sans image</button>
+            <input id="fFile" type="file" accept="image/*" hidden>
+          </div>
+        </div>
+      </div>
+      <div id="fResults" class="results"></div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <span>Quantité</span>
+        <div class="qty big">
+          <button type="button" id="fMinus" aria-label="Retirer un">−</button>
+          <input id="fQty" type="number" min="0" inputmode="numeric" aria-label="Quantité">
+          <button type="button" id="fPlus" aria-label="Ajouter un">+</button>
+        </div>
+      </div>
+      <label class="field grow"><span>Lieu</span><select id="fLoc"></select></label>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" id="fDelete" class="btn danger">Supprimer</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn ghost" data-close>Annuler</button>
+      <button type="submit" id="fSubmit" class="btn primary">Ajouter</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Saisie d'un texte (nouveau lieu, renommage) -->
+<dialog id="askDlg" class="dlg narrow">
+  <form id="askForm" novalidate>
+    <h2 id="askTitle" style="margin:0;font-size:18px"></h2>
+    <input id="askInput" maxlength="60" autocomplete="off">
+    <div class="dlg-foot"><span class="spacer"></span><button type="button" class="btn ghost" data-close>Annuler</button><button type="submit" class="btn primary">Valider</button></div>
+  </form>
+</dialog>
+
+<!-- Confirmation -->
+<dialog id="confirmDlg" class="dlg narrow">
+  <form id="confirmForm" novalidate>
+    <h2 id="confirmTitle" style="margin:0;font-size:18px"></h2>
+    <p id="confirmText"></p>
+    <div class="dlg-foot"><span class="spacer"></span><button type="button" class="btn ghost" data-close>Annuler</button><button type="submit" class="btn danger">Supprimer</button></div>
+  </form>
+</dialog>
+
+<!-- Gestion des lieux -->
+<dialog id="locDlg" class="dlg narrow">
+  <div class="pad">
+    <div class="dlg-head">
+      <h2>Lieux</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Fermer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <ul id="locList" class="loc-list"></ul>
+    <p id="locEmpty">Aucun lieu pour l'instant.</p>
+    <button type="button" id="locAdd" class="btn">+ Ajouter un lieu</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const state = {items: [], locations: []};
+const collator = new Intl.Collator('fr', {sensitivity: 'base', numeric: true});
+const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const key = s => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const ADD = '__add__';
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+
+function store(k, v) { try { v === undefined ? (v = localStorage.getItem(k)) : localStorage.setItem(k, v); } catch (e) { v = null; } return v; }
+
+/* ---------- API ---------- */
+async function api(method, url, body) {
+  const opt = {method, headers: {}};
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  let res, data;
+  try { res = await fetch(url, opt); data = await res.json(); }
+  catch (e) { throw new Error('Serveur injoignable'); }
+  if (!res.ok) { const err = new Error(data.error || 'Erreur ' + res.status); err.status = res.status; throw err; }
+  return data;
+}
+function setData(d) {
+  state.items = d.items; state.locations = d.locations;
+  render();
+  if (d.warning) toast(d.warning, true);
+}
+async function refresh() {
+  if (Object.keys(qtyTimers).length || document.querySelector('dialog[open]')) return;
+  try { setData(await api('GET', '/api/data')); } catch (e) { toast(e.message, true); }
+}
+
+/* ---------- Petits outils d'interface ---------- */
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('#toast');
+  const host = [...document.querySelectorAll('dialog[open]')].pop() || document.body;
+  if (t.parentNode !== host) host.append(t);
+  t.textContent = msg; t.classList.toggle('bad', !!bad); t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), bad ? 4500 : 2500);
+}
+function modal(dlg, focusEl) {
+  return new Promise(resolve => {
+    dlg.returnValue = '';
+    dlg.onclose = () => resolve(dlg.returnValue === 'ok');
+    dlg.showModal();
+    if (focusEl) { focusEl.focus(); focusEl.select && focusEl.select(); }
+  });
+}
+async function askText(title, placeholder, value = '') {
+  const inp = $('#askInput');
+  $('#askTitle').textContent = title; inp.placeholder = placeholder || ''; inp.value = value;
+  const ok = await modal($('#askDlg'), inp);
+  const v = inp.value.trim().replace(/\s+/g, ' ');
+  return ok && v ? v : null;
+}
+function confirmBox(title, text) {
+  $('#confirmTitle').textContent = title; $('#confirmText').textContent = text || '';
+  return modal($('#confirmDlg'));
+}
+$('#askForm').onsubmit = e => { e.preventDefault(); if (!$('#askInput').value.trim()) return $('#askInput').focus(); $('#askDlg').close('ok'); };
+$('#confirmForm').onsubmit = e => { e.preventDefault(); $('#confirmDlg').close('ok'); };
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+document.querySelectorAll('dialog').forEach(d => {
+  let down = null;  // ferme au clic sur le fond (sans fermer pendant une sélection de texte)
+  d.addEventListener('mousedown', e => down = e.target);
+  d.addEventListener('click', e => { if (e.target === d && down === d) d.close(); });
+});
+
+// Bouton qui se répète quand on reste appuyé.
+function repeatBtn(btn, fn) {
+  let t1, t2;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); };
+  btn.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    e.preventDefault(); fn();
+    t1 = setTimeout(() => t2 = setInterval(fn, 70), 450);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+  btn.addEventListener('click', e => { if (e.detail === 0) fn(); });  // clavier
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+/* ---------- Lieux ---------- */
+const sortedLocs = () => [...state.locations].sort(collator.compare);
+function fillLocSelect(sel, value) {
+  sel.replaceChildren(new Option('— Aucun lieu —', ''));
+  for (const l of sortedLocs()) sel.add(new Option(l, l));
+  const add = new Option('+ Ajouter un lieu…', ADD); add.className = 'add'; sel.add(add);
+  sel.value = value || ''; sel.dataset.prev = sel.value;
+}
+async function createLocation() {
+  const name = await askText('Nouveau lieu', 'Ex. : Tiroir A3, Boîte résistances, Garage…');
+  if (!name) return null;
+  try { const d = await api('POST', '/api/locations', {name}); state.locations = d.locations; return d.name; }
+  catch (e) { toast(e.message, true); return null; }
+}
+// Gère le choix dans une liste de lieux, y compris l'option « + Ajouter un lieu ».
+async function onLocChange(sel, apply) {
+  if (sel.value !== ADD) { sel.dataset.prev = sel.value; return apply(sel.value); }
+  sel.value = sel.dataset.prev || '';
+  const name = await createLocation();
+  if (!name) return;
+  fillLocSelect(sel, name);
+  apply(name);
+}
+
+/* ---------- Affichage des fiches ---------- */
+const grid = $('#grid'), cardTpl = $('#cardTpl'), noImg = $('#noImg');
+const qtyTimers = {};
+let filterVal = store('inv.filter') ?? '*';
+const sorters = {
+  'name': (a, b) => collator.compare(a.name, b.name),
+  'name-desc': (a, b) => collator.compare(b.name, a.name),
+  'qty': (a, b) => a.qty - b.qty || collator.compare(a.name, b.name),
+  'qty-desc': (a, b) => b.qty - a.qty || collator.compare(a.name, b.name),
+  'loc': (a, b) => (!a.location - !b.location) || collator.compare(a.location || '', b.location || '') || collator.compare(a.name, b.name),
+  'recent': (a, b) => b.created - a.created,
+  'updated': (a, b) => b.updated - a.updated,
+};
+
+function fillFilter() {
+  const sel = $('#filterLoc');
+  sel.replaceChildren(new Option('Tous les lieux', '*'), new Option('Sans lieu', ''));
+  for (const l of sortedLocs()) sel.add(new Option(l, l));
+  sel.value = filterVal; if (sel.value !== filterVal) sel.value = '*';
+}
+
+function render() {
+  fillFilter();
+  const words = norm($('#q').value).split(/\s+/).filter(Boolean);
+  const fl = $('#filterLoc').value;
+  const list = state.items.filter(it => {
+    if (fl !== '*' && (it.location || '') !== fl) return false;
+    const hay = norm(it.name + ' ' + (it.location || ''));
+    return words.every(w => hay.includes(w));
+  }).sort(sorters[$('#sort').value] || sorters.name);
+
+  grid.replaceChildren(...list.map(cardEl));
+  updateCount(list.length);
+  const empty = $('#empty');
+  empty.hidden = list.length > 0;
+  empty.innerHTML = state.items.length
+    ? 'Aucun objet ne correspond à la recherche.'
+    : 'Inventaire vide.<br>Appuie sur <b>+</b> pour ajouter ton premier objet.';
+}
+
+function updateCount(shown = grid.children.length) {
+  const n = state.items.length, units = state.items.reduce((s, i) => s + (i.qty || 0), 0);
+  $('#count').textContent = (shown !== n ? shown + ' / ' : '') + n + ' objet' + (n > 1 ? 's' : '') + ' · ' + units + ' unité' + (units > 1 ? 's' : '');
+}
+
+function setThumb(box, src, alt) {
+  box.replaceChildren();
+  if (!src) return box.append(noImg.content.cloneNode(true));
+  const img = new Image();
+  img.src = src; img.alt = alt || ''; img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+  img.onerror = () => { box.replaceChildren(noImg.content.cloneNode(true)); };
+  box.append(img);
+}
+
+function cardEl(it) {
+  const el = cardTpl.content.firstElementChild.cloneNode(true);
+  const input = el.querySelector('input'), sel = el.querySelector('select');
+  setThumb(el.querySelector('.thumb'), it.image && '/img/' + it.image, it.name);
+  el.querySelector('.name').textContent = it.name;
+  el.querySelector('.name').title = it.name;
+  input.value = it.qty; input.classList.toggle('zero', it.qty === 0);
+  repeatBtn(el.querySelector('.minus'), () => changeQty(it, input, it.qty - 1));
+  repeatBtn(el.querySelector('.plus'), () => changeQty(it, input, it.qty + 1));
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('change', () => changeQty(it, input, input.value));
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+  fillLocSelect(sel, it.location);
+  sel.addEventListener('change', () => onLocChange(sel, v => saveItem(it.id, {location: v})));
+  el.querySelector('.dots').onclick = () => openItem(it);
+  el.querySelector('.thumb').onclick = () => openItem(it);
+  return el;
+}
+
+function changeQty(it, input, v) {
+  v = Math.max(0, Math.min(1e9, Math.floor(Number(v)) || 0));
+  input.value = v; input.classList.toggle('zero', v === 0);
+  if (v === it.qty) return;
+  it.qty = v; updateCount();
+  clearTimeout(qtyTimers[it.id]);
+  qtyTimers[it.id] = setTimeout(async () => {
+    delete qtyTimers[it.id];
+    try { await api('PUT', '/api/items/' + it.id, {qty: v}); }
+    catch (e) { toast(e.message, true); refresh(); }
+  }, 400);
+}
+
+async function saveItem(id, patch) {
+  try { setData(await api('PUT', '/api/items/' + id, patch)); }
+  catch (e) { toast(e.message, true); refresh(); }
+}
+
+/* ---------- Fenêtre d'ajout / modification ---------- */
+const dlg = $('#itemDlg'), fName = $('#fName'), fQty = $('#fQty'), fLoc = $('#fLoc');
+const fImgQ = $('#fImgQ'), fResults = $('#fResults'), fPreview = $('#fPreview'), fSubmit = $('#fSubmit');
+let editing = null, pick = {kind: 'none'}, userPicked = false, queryTouched = false, searchToken = 0, nameTimer;
+
+function openItem(it) {
+  editing = it || null;
+  $('#itemTitle').textContent = it ? 'Modifier l’objet' : 'Nouvel objet';
+  fSubmit.textContent = it ? 'Enregistrer' : 'Ajouter';
+  $('#fDelete').hidden = !it;
+  fName.value = it ? it.name : '';
+  fQty.value = it ? it.qty : 1;
+  const fl = $('#filterLoc').value;
+  fillLocSelect(fLoc, it ? it.location : (fl !== '*' ? fl : ''));
+  fImgQ.value = it ? it.name : '';
+  fResults.replaceChildren();
+  pick = it && it.image ? {kind: 'keep'} : {kind: 'none'};
+  userPicked = false; queryTouched = false; searchToken++;
+  drawPreview(); checkName();
+  dlg.showModal();
+  fName.focus();
+}
+
+function drawPreview() {
+  const src = {keep: editing && editing.image && '/img/' + editing.image, url: pick.thumb, data: pick.data}[pick.kind];
+  setThumb(fPreview, src, fName.value);
+  fResults.querySelectorAll('.res').forEach(b => b.classList.toggle('on', pick.kind === 'url' && b._r === pick.r));
+}
+
+function checkName() {
+  const k = key(fName.value);
+  const dup = k && state.items.find(i => key(i.name) === k && (!editing || i.id !== editing.id));
+  $('#fNameErr').textContent = dup ? 'Un objet nommé « ' + dup.name + ' » existe déjà.' : '';
+  fName.classList.toggle('bad', !!dup);
+  fSubmit.disabled = !k || !!dup;
+}
+
+fName.addEventListener('input', () => {
+  checkName();
+  if (editing || queryTouched) return;
+  fImgQ.value = fName.value;
+  clearTimeout(nameTimer);
+  nameTimer = setTimeout(() => searchImages(fImgQ.value), 650);
+});
+fImgQ.addEventListener('input', () => { queryTouched = true; });
+fImgQ.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); searchImages(fImgQ.value); } });
+$('#fImgGo').onclick = () => searchImages(fImgQ.value);
+
+function hint(text) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = text; fResults.replaceChildren(p); }
+
+async function searchImages(q) {
+  q = q.trim();
+  const tok = ++searchToken;
+  clearTimeout(nameTimer);
+  if (!q) return fResults.replaceChildren();
+  if (/^https?:\/\//i.test(q)) return showResults([{thumb: q, urls: [q]}], true);
+  hint('Recherche d’images…');
+  try {
+    const d = await api('GET', '/api/images?q=' + encodeURIComponent(q));
+    if (tok !== searchToken) return;
+    if (!d.results.length) return hint('Aucune image trouvée. Essaie un autre mot-clé, une URL ou une image de l’appareil.');
+    showResults(d.results, !editing && !userPicked);
+  } catch (e) { if (tok === searchToken) hint(e.message); }
+}
+
+function showResults(list, autoPick) {
+  fResults.replaceChildren();
+  list.forEach(r => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'res'; b._r = r;
+    const img = new Image();
+    img.src = r.thumb; img.alt = ''; img.referrerPolicy = 'no-referrer';
+    img.onerror = () => {
+      const wasOn = b.classList.contains('on');
+      b.remove();
+      const next = fResults.querySelector('.res');
+      if (wasOn) next ? choose(next._r) : (pick = {kind: 'none'}, drawPreview());
+    };
+    b.append(img);
+    b.onclick = () => { userPicked = true; choose(r); };
+    fResults.append(b);
+  });
+  if (autoPick && list.length) choose(list[0]);
+}
+function choose(r) { pick = {kind: 'url', urls: r.urls, thumb: r.thumb, r}; drawPreview(); }
+
+$('#fNoImg').onclick = () => { userPicked = true; pick = {kind: 'none'}; drawPreview(); };
+$('#fUpload').onclick = () => $('#fFile').click();
+$('#fFile').onchange = async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try { pick = {kind: 'data', data: await shrink(file)}; userPicked = true; drawPreview(); }
+  catch (err) { toast('Image illisible', true); }
+};
+// Réduit l'image dans le navigateur (max 640 px) pour économiser disque et mémoire.
+function shrink(file, max = 640) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(/png|gif|webp/.test(file.type) ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.86));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(); };
+    img.src = url;
+  });
+}
+
+const setFQty = v => fQty.value = Math.max(0, Math.min(1e9, Math.floor(Number(v)) || 0));
+repeatBtn($('#fMinus'), () => setFQty(+fQty.value - 1));
+repeatBtn($('#fPlus'), () => setFQty(+fQty.value + 1));
+fQty.addEventListener('change', () => setFQty(fQty.value));
+fQty.addEventListener('focus', () => fQty.select());
+fLoc.addEventListener('change', () => onLocChange(fLoc, () => render()));
+
+$('#itemForm').onsubmit = async e => {
+  e.preventDefault();
+  checkName();
+  if (fSubmit.disabled) return fName.focus();
+  const body = {name: fName.value, qty: Math.max(0, Math.floor(Number(fQty.value)) || 0), location: fLoc.value === ADD ? '' : fLoc.value};
+  if (pick.kind === 'url') body.image_urls = pick.urls;
+  else if (pick.kind === 'data') body.image_data = pick.data;
+  else if (pick.kind === 'none' && editing && editing.image) body.remove_image = true;
+  const label = fSubmit.textContent, wasEditing = editing;
+  fSubmit.disabled = true; fSubmit.textContent = pick.kind === 'url' ? 'Téléchargement…' : 'Enregistrement…';
+  try {
+    const d = wasEditing ? await api('PUT', '/api/items/' + wasEditing.id, body) : await api('POST', '/api/items', body);
+    dlg.close(); setData(d);
+    if (!d.warning) toast(wasEditing ? 'Modifications enregistrées' : '« ' + body.name.trim() + ' » ajouté');
+  } catch (err) {
+    if (err.status === 409) { $('#fNameErr').textContent = err.message; fName.classList.add('bad'); }
+    else toast(err.message, true);
+  } finally { fSubmit.textContent = label; if (dlg.open) checkName(); }
+};
+
+$('#fDelete').onclick = async () => {
+  const it = editing;
+  if (!it || !await confirmBox('Supprimer « ' + it.name + ' » ?', 'Cette action est définitive.')) return;
+  try { const d = await api('DELETE', '/api/items/' + it.id, {}); dlg.close(); setData(d); toast('Objet supprimé'); }
+  catch (e) { toast(e.message, true); }
+};
+
+/* ---------- Gestion des lieux ---------- */
+function drawLocs() {
+  const ul = $('#locList'), locs = sortedLocs();
+  $('#locEmpty').hidden = locs.length > 0;
+  ul.replaceChildren(...locs.map(l => {
+    const li = document.createElement('li'), n = state.items.filter(i => i.location === l).length;
+    const span = document.createElement('span'); span.className = 'n'; span.textContent = l; span.title = l;
+    const small = document.createElement('small'); small.textContent = n + ' objet' + (n > 1 ? 's' : '');
+    const ren = document.createElement('button'); ren.type = 'button'; ren.className = 'icon-btn'; ren.title = 'Renommer'; ren.innerHTML = ICON_EDIT;
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'icon-btn'; del.title = 'Supprimer'; del.innerHTML = ICON_TRASH;
+    ren.onclick = async () => {
+      const name = await askText('Renommer le lieu', '', l);
+      if (!name || name === l) return;
+      try { setData(await api('PUT', '/api/locations/' + encodeURIComponent(l), {name})); drawLocs(); }
+      catch (e) { toast(e.message, true); }
+    };
+    del.onclick = async () => {
+      if (!await confirmBox('Supprimer le lieu « ' + l + ' » ?', n ? n + ' objet' + (n > 1 ? 's' : '') + ' n’aur' + (n > 1 ? 'ont' : 'a') + ' plus de lieu.' : '')) return;
+      try { setData(await api('DELETE', '/api/locations/' + encodeURIComponent(l), {})); drawLocs(); }
+      catch (e) { toast(e.message, true); }
+    };
+    li.append(span, small, ren, del);
+    return li;
+  }));
+}
+$('#manageLocs').onclick = () => { drawLocs(); $('#locDlg').showModal(); };
+$('#locAdd').onclick = async () => { if (await createLocation()) { render(); drawLocs(); } };
+
+/* ---------- Démarrage ---------- */
+$('#fab').onclick = () => openItem(null);
+$('#q').addEventListener('input', render);
+$('#sort').value = store('inv.sort') || 'name';
+if (!$('#sort').value) $('#sort').value = 'name';
+$('#sort').onchange = () => { store('inv.sort', $('#sort').value); render(); };
+$('#filterLoc').onchange = () => { filterVal = $('#filterLoc').value; store('inv.filter', filterVal); render(); };
+document.addEventListener('keydown', e => {
+  if (document.querySelector('dialog[open]') || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
+  else if (e.key === '+') { e.preventDefault(); openItem(null); }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Données locales de l'inventaire
+inventaire.json
+inventaire.json.tmp
+images/
+__pycache__/
