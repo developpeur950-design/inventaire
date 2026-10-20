@@ -22,13 +22,14 @@ La fenêtre affiche les adresses à ouvrir :
   Inventaire lancé
 
   Sur ce PC  : http://localhost:8080
-  Tailscale  : https://mon-pc.tailnet-xxxx.ts.net
+  Tailscale  : https://mon-pc.tailnet-xxxx.ts.net:8080
 ```
 
 ## HTTPS sur Tailscale
 
 Au lancement, le programme active `tailscale serve`, qui fournit l'adresse
-`https://<machine>.<tailnet>.ts.net` avec un vrai certificat (pas d'alerte du navigateur).
+`https://<machine>.<tailnet>.ts.net:<port>` avec un vrai certificat (pas d'alerte du navigateur).
+Le port est le même que `--port` (8080 par défaut), ou celui de `--https-port`.
 Il le désactive à l'arrêt (Ctrl+C).
 
 La première fois, HTTPS doit être autorisé sur votre réseau Tailscale : si c'est le cas,
@@ -45,7 +46,7 @@ Sur téléphone ou sur PC, ouvrez l'adresse HTTPS puis « Ajouter à l'écran d'
 
 ## Options
 
-`--port 8081` (autre port), `--lan` (autoriser aussi le Wi-Fi local), `--no-https`
+`--port 8081` (autre port), `--https-port 8443` (autre port pour l'adresse HTTPS Tailscale), `--lan` (autoriser aussi le Wi-Fi local), `--no-https`
 (ne pas activer HTTPS), `--data chemin\inventaire.json` (autre emplacement des données).
 
 ## Données

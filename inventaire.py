@@ -625,12 +625,13 @@ def tailscale_info():
     return None, None, None
 
 
-def tailscale_https(cli, port):
-    """Active « tailscale serve » : https://<machine>.ts.net -> ce serveur.
+def tailscale_https(cli, port, https_port):
+    """Active « tailscale serve » : https://<machine>.ts.net:<https_port> -> ce serveur.
 
     Retourne (True, None) si c'est actif, sinon (False, explication)."""
     try:
-        out = subprocess.run([cli, "serve", "--bg", "--https=443", "http://127.0.0.1:%d" % port],
+        out = subprocess.run([cli, "serve", "--bg", "--https=%d" % https_port,
+                              "http://127.0.0.1:%d" % port],
                              capture_output=True, timeout=20, creationflags=NO_WINDOW)
         text = (out.stdout + out.stderr).decode("utf-8", "replace")
         if out.returncode == 0:
@@ -652,9 +653,9 @@ def tailscale_https(cli, port):
     return False, first + "\n               (mettez Tailscale à jour si la version est ancienne)"
 
 
-def tailscale_https_off(cli):
+def tailscale_https_off(cli, https_port):
     try:
-        subprocess.run([cli, "serve", "--https=443", "off"], capture_output=True, timeout=10,
+        subprocess.run([cli, "serve", "--https=%d" % https_port, "off"], capture_output=True, timeout=10,
                        creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         pass
@@ -675,6 +676,8 @@ def main():
     ap.add_argument("--port", type=int, default=8080, help="port (8080 par défaut)")
     ap.add_argument("--lan", action="store_true",
                     help="autoriser aussi les appareils du réseau local (Wi-Fi)")
+    ap.add_argument("--https-port", type=int,
+                    help="port de l'adresse HTTPS Tailscale (par défaut le même que --port)")
     ap.add_argument("--no-https", action="store_true",
                     help="ne pas activer HTTPS via Tailscale (accès Tailscale en http)")
     ap.add_argument("--data", default=os.path.join(BASE_DIR, "inventaire.json"),
@@ -687,6 +690,7 @@ def main():
 
     ts_ip, ts_name, cli = tailscale_info()
     https_on = False
+    https_port = args.https_port or args.port
     if not ts_ip:
         lines.append("  Tailscale  : non détecté (connectez Tailscale puis relancez)")
     elif args.no_https:
@@ -698,9 +702,10 @@ def main():
             why = "activez MagicDNS dans la console Tailscale"
         else:
             print("\n  Activation de HTTPS sur Tailscale...", flush=True)
-            https_on, why = tailscale_https(cli, args.port)
+            https_on, why = tailscale_https(cli, args.port, https_port)
         if https_on:
-            lines.append("  Tailscale  : https://%s" % ts_name)
+            lines.append("  Tailscale  : https://%s%s"
+                         % (ts_name, "" if https_port == 443 else ":%d" % https_port))
         else:
             lines.append("  Tailscale  : http://%s:%d   (sans HTTPS)" % (ts_name or ts_ip, args.port))
             lines.append("  HTTPS      : " + why)
@@ -732,7 +737,7 @@ def main():
         print("Arrêt.")
     finally:
         if https_on:
-            tailscale_https_off(cli)
+            tailscale_https_off(cli, https_port)
 
 
 if __name__ == "__main__":
