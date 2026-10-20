@@ -28,6 +28,12 @@ from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_FILE = os.path.join(BASE_DIR, "index.html")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC = {  # fichiers servis tels quels : nom -> type
+    "icon.svg": "image/svg+xml", "icon-192.png": "image/png", "icon-512.png": "image/png",
+    "apple-touch-icon.png": "image/png", "icon.ico": "image/x-icon",
+    "manifest.webmanifest": "application/manifest+json",
+}
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 MAX_BODY = 12 * 1024 * 1024
@@ -450,7 +456,8 @@ class Handler(BaseHTTPRequestHandler):
         if not (self.headers.get("Content-Type") or "").startswith("application/json"):
             raise ApiError(415, "JSON attendu")
         origin = self.headers.get("Origin")
-        if origin and urlparse(origin).netloc != self.headers.get("Host"):
+        hosts = (self.headers.get("Host"), self.headers.get("X-Forwarded-Host"))
+        if origin and urlparse(origin).netloc not in hosts:
             raise ApiError(403, "Origine refusée")
         size = int(self.headers.get("Content-Length") or 0)
         if size > MAX_BODY:
@@ -504,6 +511,11 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"results": search_images(q)})
         elif len(parts) == 2 and parts[0] == "img":
             self._image(parts[1])
+        elif len(parts) == 1 and (parts[0] in STATIC or parts[0] == "favicon.ico"):
+            name = "icon.ico" if parts[0] == "favicon.ico" else parts[0]
+            with open(os.path.join(STATIC_DIR, name), "rb") as f:
+                body = f.read()
+            self._send(200, body, STATIC[name], {"Cache-Control": "public, max-age=86400"})
         else:
             raise ApiError(404, "Introuvable")
 
@@ -580,20 +592,21 @@ def is_tailscale_ip(ip):
 
 TAILSCALE_CLI = ("tailscale", r"C:\Program Files\Tailscale\tailscale.exe",
                  "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def tailscale_info():
-    """Retourne (ip, nom_magicdns) de cette machine sur Tailscale, ou (None, None)."""
+    """Retourne (ip, nom_magicdns, commande) de cette machine sur Tailscale."""
     for cli in TAILSCALE_CLI:
         try:
             out = subprocess.run([cli, "status", "--json"], capture_output=True, timeout=5,
-                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                 creationflags=NO_WINDOW)
             me = json.loads(out.stdout or b"{}").get("Self") or {}
         except (OSError, ValueError, subprocess.SubprocessError):
             continue
         ips = [ip for ip in me.get("TailscaleIPs") or [] if is_tailscale_ip(ip)]
         if ips:
-            return ips[0], (me.get("DNSName") or "").rstrip(".") or None
+            return ips[0], (me.get("DNSName") or "").rstrip(".") or None, cli
     # Sans la commande tailscale : on cherche une adresse 100.64.0.0/10 sur la machine.
     candidates = []
     try:
@@ -608,8 +621,43 @@ def tailscale_info():
         pass
     for ip in candidates:
         if is_tailscale_ip(ip):
-            return ip, None
-    return None, None
+            return ip, None, None
+    return None, None, None
+
+
+def tailscale_https(cli, port):
+    """Active « tailscale serve » : https://<machine>.ts.net -> ce serveur.
+
+    Retourne (True, None) si c'est actif, sinon (False, explication)."""
+    try:
+        out = subprocess.run([cli, "serve", "--bg", "--https=443", "http://127.0.0.1:%d" % port],
+                             capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        text = (out.stdout + out.stderr).decode("utf-8", "replace")
+        if out.returncode == 0:
+            return True, None
+    except subprocess.TimeoutExpired as e:
+        # Tailscale attend que HTTPS soit autorisé sur le tailnet.
+        text = ((e.stdout or b"") + (e.stderr or b"")).decode("utf-8", "replace")
+    except OSError as e:
+        return False, str(e)
+    link = re.search(r"https://login\.tailscale\.com/\S+", text)
+    if link:
+        return False, ("HTTPS n'est pas encore autorisé sur votre réseau Tailscale.\n"
+                       "               Ouvrez ce lien, acceptez, puis relancez :\n"
+                       "               " + link.group(0))
+    if "denied" in text.lower() or "operator" in text.lower():
+        return False, ("Tailscale refuse l'accès. Sous Linux, lancez une fois :\n"
+                       "               sudo tailscale set --operator=$USER")
+    first = text.strip().splitlines()[0] if text.strip() else "erreur inconnue"
+    return False, first + "\n               (mettez Tailscale à jour si la version est ancienne)"
+
+
+def tailscale_https_off(cli):
+    try:
+        subprocess.run([cli, "serve", "--https=443", "off"], capture_output=True, timeout=10,
+                       creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 class Server(ThreadingHTTPServer):
@@ -627,30 +675,51 @@ def main():
     ap.add_argument("--port", type=int, default=8080, help="port (8080 par défaut)")
     ap.add_argument("--lan", action="store_true",
                     help="autoriser aussi les appareils du réseau local (Wi-Fi)")
+    ap.add_argument("--no-https", action="store_true",
+                    help="ne pas activer HTTPS via Tailscale (accès Tailscale en http)")
     ap.add_argument("--data", default=os.path.join(BASE_DIR, "inventaire.json"),
                     help="fichier JSON des données")
     args = ap.parse_args()
 
     Handler.store = Store(os.path.abspath(args.data))
     Server.allow_lan = args.lan
+    lines = ["  Sur ce PC  : http://localhost:%d" % args.port]
+
+    ts_ip, ts_name, cli = tailscale_info()
+    https_on = False
+    if not ts_ip:
+        lines.append("  Tailscale  : non détecté (connectez Tailscale puis relancez)")
+    elif args.no_https:
+        lines.append("  Tailscale  : http://%s:%d" % (ts_name or ts_ip, args.port))
+    else:
+        if not cli:
+            why = "commande tailscale introuvable"
+        elif not ts_name:
+            why = "activez MagicDNS dans la console Tailscale"
+        else:
+            print("\n  Activation de HTTPS sur Tailscale...", flush=True)
+            https_on, why = tailscale_https(cli, args.port)
+        if https_on:
+            lines.append("  Tailscale  : https://%s" % ts_name)
+        else:
+            lines.append("  Tailscale  : http://%s:%d   (sans HTTPS)" % (ts_name or ts_ip, args.port))
+            lines.append("  HTTPS      : " + why)
+
+    # Avec HTTPS, Tailscale passe par localhost : inutile d'ouvrir le port au réseau
+    # (et pas de demande du pare-feu Windows).
+    direct_ts = ts_ip and not https_on
+    host = "0.0.0.0" if args.lan or direct_ts else "127.0.0.1"
     try:
-        server = Server(("0.0.0.0", args.port), Handler)
+        server = Server((host, args.port), Handler)
     except OSError as e:
         print("Impossible de démarrer sur le port %d (%s)." % (args.port, e))
         print("Le serveur tourne peut-être déjà, ou essayez : python inventaire.py --port 8081")
         sys.exit(1)
 
-    ts_ip, ts_name = tailscale_info()
     print()
     print("  Inventaire lancé")
     print()
-    print("  Sur ce PC  : http://localhost:%d" % args.port)
-    if ts_ip:
-        print("  Tailscale  : http://%s:%d" % (ts_ip, args.port))
-        if ts_name:
-            print("               http://%s:%d" % (ts_name, args.port))
-    else:
-        print("  Tailscale  : non détecté (connectez Tailscale puis relancez pour voir l'adresse)")
+    print("\n".join(lines))
     if args.lan:
         print("  Réseau local autorisé")
     print()
@@ -661,6 +730,9 @@ def main():
         server.serve_forever()
     except KeyboardInterrupt:
         print("Arrêt.")
+    finally:
+        if https_on:
+            tailscale_https_off(cli)
 
 
 if __name__ == "__main__":

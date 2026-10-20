@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <title>Inventaire</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23f5a623'/%3E%3C/svg%3E">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Inventaire">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
 :root{
   --bg:#000; --card:#121212; --raise:#1b1b1b; --line:#262626;
@@ -40,7 +47,8 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 /* En-tête */
 header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid #181818}
 .bar{max-width:1200px;margin:0 auto;padding:12px 16px;display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center}
-.title{display:flex;align-items:baseline;gap:8px;margin-right:12px}
+.title{display:flex;align-items:center;gap:9px;margin-right:12px}
+.title img{width:28px;height:28px;display:block}
 h1{margin:0;font-size:20px}
 #count{color:var(--muted);font-size:13px}
 #q{width:100%;max-width:420px;justify-self:end}
@@ -127,7 +135,7 @@ dialog p.msg{margin:0;color:var(--muted);line-height:1.45}
 
 <header>
   <div class="bar">
-    <div class="title"><h1>Inventaire</h1><span id="count"></span></div>
+    <div class="title"><img src="/icon.svg" alt=""><h1>Inventaire</h1><span id="count"></span></div>
     <input id="q" type="search" placeholder="Rechercher" autocomplete="off" aria-label="Rechercher">
     <select id="sort" aria-label="Trier par">
       <option value="name">Nom</option>
