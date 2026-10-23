@@ -165,7 +165,58 @@ def _commons(query, n):
     return out
 
 
-ENGINES = (_bing, _duckduckgo, _openverse, _commons)  # par ordre de préférence
+def _google(query, n):
+    # Version HTML simple de Google Images (sans JavaScript).
+    page = fetch("https://www.google.com/search?tbm=isch&gbv=1&hl=fr&q=" + quote_plus(query),
+                 MAX_PAGE, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                                    "Cookie": "CONSENT=YES+; SOCS=CAI"}).decode("utf-8", "replace")
+    urls = re.findall(r'src="(https://encrypted-tbn\d\.gstatic\.com/images\?[^"]+)"', page)
+    return [{"thumb": html.unescape(u), "urls": [html.unescape(u)]} for u in urls[:n]]
+
+
+def _yahoo(query, n):
+    page = fetch("https://images.search.yahoo.com/search/images?p=" + quote_plus(query),
+                 MAX_PAGE).decode("utf-8", "replace")
+    out = []
+    for u in re.findall(r"""data-src=['"](https://[^'"]+)['"]""", page):
+        u = html.unescape(u)
+        if "mm.bing.net/th" in u or "yimg.com" in u:
+            out.append({"thumb": u, "urls": [u]})
+    return out[:n]
+
+
+def _wikipedia(lang):
+    def engine(query, n):
+        data = json.loads(fetch(
+            "https://%s.wikipedia.org/w/api.php?action=query&format=json&generator=search"
+            "&prop=pageimages&piprop=thumbnail&pithumbsize=400&gsrlimit=%d&gsrsearch=%s"
+            % (lang, n, quote_plus(query)), MAX_PAGE))
+        pages = sorted(data.get("query", {}).get("pages", {}).values(),
+                       key=lambda p: p.get("index", 0))
+        return [{"thumb": p["thumbnail"]["source"], "urls": [p["thumbnail"]["source"]]}
+                for p in pages if p.get("thumbnail", {}).get("source")]
+    engine.__name__ = "_wikipedia_" + lang
+    return engine
+
+
+def _flickr(query, n):
+    tags = ",".join(w for w in re.split(r"[^\w]+", query.lower()) if w)
+    data = json.loads(fetch("https://www.flickr.com/services/feeds/photos_public.gne"
+                            "?format=json&nojsoncallback=1&tagmode=all&tags=" + quote_plus(tags),
+                            MAX_PAGE))
+    out = []
+    for it in data.get("items", [])[:n]:
+        small = (it.get("media") or {}).get("m")
+        if small:
+            out.append({"thumb": small, "urls": [small.replace("_m.", "_z."), small]})
+    return out
+
+
+# Par ordre de préférence : les premiers résultats affichés viennent des premiers moteurs.
+ENGINES = (_bing, _google, _duckduckgo, _yahoo, _openverse,
+           _wikipedia("fr"), _wikipedia("en"), _commons, _flickr)
+PER_ENGINE = 6
+MAX_RESULTS = 30
 _cache = {}
 _cache_lock = threading.Lock()
 
@@ -184,23 +235,32 @@ def query_variants(query):
 
 
 def _search_all(query, n):
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(len(ENGINES)) as pool:
-        futures = [pool.submit(engine, query, n) for engine in ENGINES]
+    """Lance tous les moteurs en parallèle ; n'attend pas les plus lents."""
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+    pool = ThreadPoolExecutor(len(ENGINES))
+    futures = [pool.submit(engine, query, n) for engine in ENGINES]
+    pool.shutdown(wait=False)
+    # Jusqu'à 3 s pour tout le monde, puis on continue seulement s'il n'y a encore rien.
+    done, pending = wait(futures, timeout=3)
+    deadline = time.monotonic() + 6
+    while pending and not any(f.exception() is None and f.result() for f in done):
+        left = deadline - time.monotonic()
+        if left <= 0:
+            break
+        more, pending = wait(pending, timeout=left, return_when=FIRST_COMPLETED)
+        done |= more
     results, seen = [], set()
-    for f in futures:
-        try:
-            found = f.result()
-        except Exception:
+    for f in futures:  # ordre des moteurs conservé
+        if f not in done or f.exception() is not None:
             continue
-        for r in found:
+        for r in f.result()[:PER_ENGINE]:
             if r["thumb"] not in seen:
                 seen.add(r["thumb"])
                 results.append(r)
-    return results
+    return results[:MAX_RESULTS]
 
 
-def search_images(query, n=10):
+def search_images(query, n=PER_ENGINE):
     """Interroge tous les moteurs en parallèle et fusionne les résultats."""
     query = clean(query, 200)
     if not query:
@@ -210,7 +270,7 @@ def search_images(query, n=10):
             return _cache[query]
     results = []
     for q in query_variants(query):
-        results = _search_all(q, n)[:16]
+        results = _search_all(q, n)
         if results:
             break
     if results:
@@ -241,6 +301,11 @@ class Store:
                 loaded = json.load(f)
             self.data["locations"] = list(loaded.get("locations", []))
             self.data["items"] = list(loaded.get("items", []))
+        for item in self.data["items"]:
+            # Ancien format (un seul lieu) -> liste de lieux avec une quantité chacun.
+            if "stock" not in item:
+                item["stock"] = [{"location": item.pop("location", "") or "",
+                                  "qty": item.pop("qty", 0) or 0}]
 
     # -- utilitaires (appelés avec self.lock tenu) --
 
@@ -273,6 +338,19 @@ class Store:
             raise ApiError(404, "Lieu introuvable")
         self.data["locations"].append(name)
         return name
+
+    def _stock(self, rows):
+        """Valide la liste [{location, qty}] : lieux connus, un seul exemplaire par lieu."""
+        if not isinstance(rows, list):
+            raise ApiError(400, "Liste des lieux invalide")
+        merged = {}
+        for row in rows[:100]:
+            if not isinstance(row, dict):
+                raise ApiError(400, "Liste des lieux invalide")
+            qty = to_qty(row.get("qty", 0))
+            loc = self._location(row.get("location"))
+            merged[loc] = merged.get(loc, 0) + qty
+        return [{"location": l, "qty": q} for l, q in merged.items()] or [{"location": "", "qty": 0}]
 
     def _drop_file(self, name):
         if not name or not IMG_NAME.match(name):
@@ -332,21 +410,22 @@ class Store:
         name = clean(p.get("name"))
         if not name:
             raise ApiError(400, "Le nom est obligatoire")
-        qty = to_qty(p.get("qty", 1))
+        if "stock" not in p:
+            p["stock"] = [{"location": p.get("location"), "qty": p.get("qty", 1)}]
         with self.lock:
             self._check_unique(name)
         image, warn = self.store_image(p) if wants_image(p) else (None, None)
         with self.lock:
             try:
                 self._check_unique(name)
+                stock = self._stock(p["stock"])
             except ApiError:
                 self._drop_file(image)
                 raise
             now = int(time.time())
             self.data["items"].append({
-                "id": uuid.uuid4().hex[:12], "name": name, "qty": qty,
-                "location": self._location(p.get("location")),
-                "image": image, "created": now, "updated": now,
+                "id": uuid.uuid4().hex[:12], "name": name, "image": image,
+                "stock": stock, "created": now, "updated": now,
             })
             self._save()
         return warn
@@ -365,16 +444,14 @@ class Store:
                 item = self._find(item_id)
                 if name is not None:
                     self._check_unique(name, item_id)
-                qty = to_qty(p["qty"]) if "qty" in p else item["qty"]
+                stock = self._stock(p["stock"]) if "stock" in p else item["stock"]
             except ApiError:
                 self._drop_file(image)
                 raise
             old = None
-            item["qty"] = qty
+            item["stock"] = stock
             if name is not None:
                 item["name"] = name
-            if "location" in p:
-                item["location"] = self._location(p["location"])
             if image:
                 old, item["image"] = item.get("image"), image
             elif p.get("remove_image"):
@@ -411,8 +488,9 @@ class Store:
             locs = self.data["locations"]
             locs[locs.index(old)] = new
             for item in self.data["items"]:
-                if item.get("location") == old:
-                    item["location"] = new
+                for row in item["stock"]:
+                    if row["location"] == old:
+                        row["location"] = new
             self._save()
         return new
 
@@ -421,8 +499,10 @@ class Store:
             name = self._location(value, create=False)
             self.data["locations"].remove(name)
             for item in self.data["items"]:
-                if item.get("location") == name:
-                    item["location"] = ""
+                # Les quantités de ce lieu passent « sans lieu ».
+                rows = [dict(r, location="" if r["location"] == name else r["location"])
+                        for r in item["stock"]]
+                item["stock"] = self._stock(rows)
             self._save()
 
 

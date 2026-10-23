@@ -61,18 +61,24 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .card{position:relative;min-width:0;display:flex;gap:12px;padding:10px;background:var(--card);border:1px solid #1c1c1c;border-radius:8px}
 .thumb{flex:none;width:76px;height:76px;border-radius:6px;overflow:hidden;background:var(--raise);display:grid;place-items:center;color:#4d4a44;font-size:30px;font-weight:bold;cursor:pointer}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:8px}
+.info{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
 .name{margin:2px 28px 0 0;font-size:16px;font-weight:bold;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.total{margin-top:-5px;color:var(--muted);font-size:13px}
+.rows{display:flex;flex-direction:column;gap:5px}
 .row{display:flex;align-items:center;gap:8px}
+.add-loc{align-self:flex-start;padding:0;font-size:13px}
 .qty{display:inline-flex;flex:none;align-items:center;height:34px;border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .qty:focus-within{border-color:var(--accent)}
 .qty button{width:32px;height:100%;border:0;background:none;color:var(--accent);font-size:20px;line-height:1;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 .qty button:hover{background:var(--raise)}
 .qty input{width:48px;height:100%;padding:0;border:0;border-radius:0;background:none;text-align:center;font-weight:bold}
 .qty input.zero{color:var(--danger)}
-.card .loc{flex:1;height:34px;background-color:transparent;border-color:transparent;color:var(--muted);padding-left:8px}
-.card .loc:hover{background-color:var(--raise)}
-.card .loc.set{color:var(--text)}
+.row .loc{flex:1;height:34px;background-color:transparent;border-color:transparent;color:var(--muted);padding-left:8px}
+.row .loc:hover{background-color:var(--raise)}
+.row .loc.set{color:var(--text)}
+dialog .row .loc{height:38px;background-color:var(--raise);border-color:var(--line);color:var(--text)}
+.row .rm{flex:none;width:30px;height:30px;border:0;border-radius:6px;background:none;color:var(--muted);font-size:18px}
+.row .rm:hover{color:var(--danger);background:var(--raise)}
 .dots{position:absolute;top:4px;right:2px;width:30px;height:30px;border:0;border-radius:6px;background:none;color:var(--muted);display:grid;place-items:center}
 .dots:hover{color:var(--text);background:var(--raise)}
 .dots svg{width:16px;height:16px}
@@ -103,9 +109,6 @@ input.bad{border-color:var(--danger)}
 .links{display:flex;gap:16px;flex-wrap:wrap}
 .alt{display:flex;gap:6px}
 .alt input{flex:1}
-.pair{display:flex;gap:12px;align-items:flex-end}
-.pair .grow{flex:1}
-.pair select{width:100%}
 dialog .qty{height:38px}
 dialog .qty input{width:60px}
 .foot{display:flex;align-items:center;gap:10px;padding-top:4px}
@@ -159,19 +162,25 @@ dialog p.msg{margin:0;color:var(--muted);line-height:1.45}
     <div class="thumb"></div>
     <div class="info">
       <div class="name"></div>
-      <div class="row">
-        <div class="qty">
-          <button type="button" class="minus" aria-label="Moins">−</button>
-          <input type="number" min="0" inputmode="numeric" aria-label="Quantité">
-          <button type="button" class="plus" aria-label="Plus">+</button>
-        </div>
-        <select class="loc" aria-label="Lieu"></select>
-      </div>
+      <div class="total"></div>
+      <div class="rows"></div>
+      <button type="button" class="link add-loc">+ lieu</button>
     </div>
     <button type="button" class="dots" title="Modifier" aria-label="Modifier">
       <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
     </button>
   </article>
+</template>
+
+<template id="rowTpl">
+  <div class="row">
+    <div class="qty">
+      <button type="button" class="minus" aria-label="Moins">−</button>
+      <input type="number" min="0" inputmode="numeric" aria-label="Quantité">
+      <button type="button" class="plus" aria-label="Plus">+</button>
+    </div>
+    <select class="loc" aria-label="Lieu"></select>
+  </div>
 </template>
 
 <dialog id="itemDlg">
@@ -197,16 +206,10 @@ dialog p.msg{margin:0;color:var(--muted);line-height:1.45}
         <input id="fFile" type="file" accept="image/*" hidden>
       </div>
     </div>
-    <div class="pair">
-      <div class="field">
-        <span>Quantité</span>
-        <div class="qty">
-          <button type="button" id="fMinus" aria-label="Moins">−</button>
-          <input id="fQty" type="number" min="0" inputmode="numeric" aria-label="Quantité">
-          <button type="button" id="fPlus" aria-label="Plus">+</button>
-        </div>
-      </div>
-      <label class="field grow"><span>Lieu</span><select id="fLoc"></select></label>
+    <div class="field">
+      <span>Quantité et lieu</span>
+      <div id="fRows" class="rows"></div>
+      <button type="button" id="fAddRow" class="link add-loc">+ Ajouter un lieu</button>
     </div>
     <div class="foot">
       <button type="button" id="fDelete" class="link danger">Supprimer</button>
@@ -249,10 +252,10 @@ dialog p.msg{margin:0;color:var(--muted);line-height:1.45}
 const $ = s => document.querySelector(s);
 const state = {items: [], locations: []};
 const collator = new Intl.Collator('fr', {sensitivity: 'base', numeric: true});
-const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const key = s => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
-const NEW_LOC = '__new__';
-const qtyTimers = {};
+const NEW_LOC = '__new__', REMOVE = '__remove__', PICK = '__pick__';
+const pending = {};  // quantités modifiées pas encore envoyées : id -> {stock, timer}
 
 function pref(k, v) {
   try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; }
@@ -269,12 +272,13 @@ async function api(method, url, body) {
   return data;
 }
 function setData(d) {
-  state.items = d.items; state.locations = d.locations;
+  state.items = d.items.map(i => pending[i.id] ? Object.assign(i, {stock: pending[i.id].stock}) : i);
+  state.locations = d.locations;
   render();
   if (d.warning) toast(d.warning, true);
 }
 async function refresh() {
-  if (Object.keys(qtyTimers).length || document.querySelector('dialog[open]')) return;
+  if (Object.keys(pending).length || document.querySelector('dialog[open]')) return;
   try { setData(await api('GET', '/api/data')); } catch (e) { toast(e.message, true); }
 }
 
@@ -334,13 +338,20 @@ const toQty = v => Math.max(0, Math.min(1e9, Math.floor(Number(v)) || 0));
 
 /* ---------- Lieux ---------- */
 const sortedLocs = () => [...state.locations].sort(collator.compare);
-function fillLocSelect(sel, value) {
-  sel.replaceChildren(new Option('Aucun lieu', ''));
-  for (const l of sortedLocs()) sel.add(new Option(l, l));
+// opt.used : lieux déjà pris par les autres lignes du même objet (grisés)
+// opt.remove : ajoute « Retirer ce lieu » ; location null = « Choisir un lieu »
+function fillLocSelect(sel, value, opt = {}) {
+  const used = opt.used || new Set();
+  sel.replaceChildren();
+  if (value === null) { const o = new Option('Choisir un lieu', PICK); o.disabled = true; sel.add(o); }
+  const add = (label, v) => { const o = new Option(label, v); o.disabled = used.has(v); sel.add(o); };
+  add('Aucun lieu', '');
+  for (const l of sortedLocs()) add(l, l);
   sel.add(new Option('+ Nouveau lieu', NEW_LOC));
-  sel.value = value || '';
+  if (opt.remove) sel.add(new Option('Retirer ce lieu', REMOVE));
+  sel.value = value === null ? PICK : value || '';
   sel.dataset.prev = sel.value;
-  sel.classList.toggle('set', !!sel.value);
+  sel.classList.toggle('set', !!value);
 }
 async function newLocation() {
   const name = await askText('Nouveau lieu');
@@ -358,19 +369,25 @@ async function onLocChange(sel, apply) {
 }
 
 /* ---------- Liste ---------- */
-const grid = $('#grid'), cardTpl = $('#cardTpl');
+const grid = $('#grid'), cardTpl = $('#cardTpl'), rowTpl = $('#rowTpl');
+const totalOf = it => it.stock.reduce((n, r) => n + r.qty, 0);
+const firstLoc = it => it.stock.map(r => r.location).filter(Boolean).sort(collator.compare)[0] || '';
+const byName = (a, b) => collator.compare(a.name, b.name);
 const sorters = {
-  'name': (a, b) => collator.compare(a.name, b.name),
-  'qty': (a, b) => a.qty - b.qty || collator.compare(a.name, b.name),
-  'qty-desc': (a, b) => b.qty - a.qty || collator.compare(a.name, b.name),
-  'loc': (a, b) => (!a.location - !b.location) || collator.compare(a.location || '', b.location || '') || collator.compare(a.name, b.name),
+  'name': byName,
+  'qty': (a, b) => totalOf(a) - totalOf(b) || byName(a, b),
+  'qty-desc': (a, b) => totalOf(b) - totalOf(a) || byName(a, b),
+  'loc': (a, b) => (!firstLoc(a) - !firstLoc(b)) || collator.compare(firstLoc(a), firstLoc(b)) || byName(a, b),
   'recent': (a, b) => b.created - a.created,
 };
 
 function render() {
   const words = norm($('#q').value).split(/\s+/).filter(Boolean);
   const list = state.items
-    .filter(it => { const hay = norm(it.name + ' ' + (it.location || '')); return words.every(w => hay.includes(w)); })
+    .filter(it => {
+      const hay = norm(it.name + ' ' + it.stock.map(r => r.location).join(' '));
+      return words.every(w => hay.includes(w));
+    })
     .sort(sorters[$('#sort').value] || sorters.name);
   grid.replaceChildren(...list.map(cardEl));
   const n = state.items.length;
@@ -389,32 +406,66 @@ function showImage(box, src, name) {
   box.append(img);
 }
 
+// Une ligne « − quantité + | lieu ».
+function rowEl(r) {
+  const el = rowTpl.content.firstElementChild.cloneNode(true);
+  const input = el.querySelector('input'), sel = el.querySelector('select');
+  let qty = r.qty;
+  const show = () => { input.value = qty; input.classList.toggle('zero', qty === 0); };
+  const set = v => { v = toQty(v); if (v !== qty) { qty = v; r.onQty(v); } show(); };
+  show();
+  holdButton(el.querySelector('.minus'), () => set(qty - 1));
+  holdButton(el.querySelector('.plus'), () => set(qty + 1));
+  input.onfocus = () => input.select();
+  input.onchange = () => set(input.value);
+  input.oninput = () => {  // suit la saisie sans attendre de quitter le champ
+    const v = toQty(input.value);
+    if (input.value !== '' && v !== qty) { qty = v; r.onQty(v); }
+  };
+  input.onkeydown = e => { if (e.key === 'Enter') input.blur(); };
+  fillLocSelect(sel, r.location, r);
+  sel.onchange = () => onLocChange(sel, r.onLoc);
+  return el;
+}
+
 function cardEl(it) {
   const el = cardTpl.content.firstElementChild.cloneNode(true);
-  const input = el.querySelector('input'), sel = el.querySelector('select');
+  const rows = el.querySelector('.rows'), total = el.querySelector('.total');
   showImage(el.querySelector('.thumb'), it.image && '/img/' + it.image, it.name);
   el.querySelector('.name').textContent = el.querySelector('.name').title = it.name;
-  input.value = it.qty; input.classList.toggle('zero', it.qty === 0);
-  holdButton(el.querySelector('.minus'), () => setQty(it, input, it.qty - 1));
-  holdButton(el.querySelector('.plus'), () => setQty(it, input, it.qty + 1));
-  input.onfocus = () => input.select();
-  input.onchange = () => setQty(it, input, input.value);
-  input.onkeydown = e => { if (e.key === 'Enter') input.blur(); };
-  fillLocSelect(sel, it.location);
-  sel.onchange = () => onLocChange(sel, v => save(it.id, {location: v}));
+  const showTotal = () => { total.hidden = it.stock.length < 2; total.textContent = 'Total : ' + totalOf(it); };
+  showTotal();
+  const others = row => new Set(it.stock.filter(x => x !== row).map(x => x.location));
+  for (const row of it.stock) {
+    rows.append(rowEl({
+      qty: row.qty, location: row.location, used: others(row), remove: it.stock.length > 1,
+      onQty: v => { row.qty = v; showTotal(); saveLater(it); },
+      onLoc: v => save(it.id, {stock: v === REMOVE
+        ? it.stock.filter(x => x !== row)
+        : it.stock.map(x => x === row ? {location: v, qty: x.qty} : x)}),
+    }));
+  }
+  const addLoc = el.querySelector('.add-loc');
+  addLoc.onclick = () => {
+    // Nouvelle ligne : enregistrée dès qu'un lieu est choisi.
+    let qty = 1;
+    const row = rowEl({qty, location: null, used: others(null),
+      onQty: v => qty = v,
+      onLoc: v => save(it.id, {stock: it.stock.concat({location: v, qty})})});
+    rows.append(row); addLoc.hidden = true;
+    row.querySelector('select').focus();
+  };
   el.querySelector('.dots').onclick = el.querySelector('.thumb').onclick = () => openItem(it);
   return el;
 }
 
-function setQty(it, input, v) {
-  v = toQty(v);
-  input.value = v; input.classList.toggle('zero', v === 0);
-  if (v === it.qty) return;
-  it.qty = v;
-  clearTimeout(qtyTimers[it.id]);
-  qtyTimers[it.id] = setTimeout(async () => {
-    delete qtyTimers[it.id];
-    try { await api('PUT', '/api/items/' + it.id, {qty: v}); }
+// Envoie les quantités 400 ms après le dernier clic (les clics rapides sont regroupés).
+function saveLater(it) {
+  const p = pending[it.id] || (pending[it.id] = {stock: it.stock});
+  clearTimeout(p.timer);
+  p.timer = setTimeout(async () => {
+    delete pending[it.id];
+    try { await api('PUT', '/api/items/' + it.id, {stock: p.stock}); }
     catch (e) { toast(e.message, true); refresh(); }
   }, 400);
 }
@@ -425,10 +476,11 @@ async function save(id, patch) {
 }
 
 /* ---------- Fenêtre objet ---------- */
-const dlg = $('#itemDlg'), fName = $('#fName'), fQty = $('#fQty'), fLoc = $('#fLoc'), fSubmit = $('#fSubmit');
+const dlg = $('#itemDlg'), fName = $('#fName'), fRows = $('#fRows'), fSubmit = $('#fSubmit');
 const strip = $('#strip'), note = $('#stripNote'), fImgQ = $('#fImgQ');
 // tiles : images proposées ({thumb, pick}), chosen : celle retenue (ou null = pas d'image)
 let editing = null, tiles = [], chosen = null, userChose = false, searchId = 0, typingTimer;
+let fStock = [];  // lignes {location, qty} de la fenêtre
 
 function openItem(it) {
   editing = it || null;
@@ -436,8 +488,10 @@ function openItem(it) {
   fSubmit.textContent = it ? 'Enregistrer' : 'Ajouter';
   $('#fDelete').hidden = !it;
   fName.value = it ? it.name : '';
-  fQty.value = it ? it.qty : 1;
-  fillLocSelect(fLoc, it ? it.location : pref('inv.lastLoc'));
+  const last = pref('inv.lastLoc') || '';
+  fStock = it ? it.stock.map(r => ({...r}))
+              : [{location: state.locations.includes(last) ? last : '', qty: 1}];
+  drawRows();
   $('#alt').hidden = true; $('#showAlt').hidden = false;
   fImgQ.value = '';
   tiles = it && it.image ? [{thumb: '/img/' + it.image, pick: {kind: 'keep'}}] : [];
@@ -541,18 +595,35 @@ function shrink(file, max = 640) {
   });
 }
 
-holdButton($('#fMinus'), () => fQty.value = toQty(+fQty.value - 1));
-holdButton($('#fPlus'), () => fQty.value = toQty(+fQty.value + 1));
-fQty.onchange = () => fQty.value = toQty(fQty.value);
-fQty.onfocus = () => fQty.select();
-fLoc.onchange = () => onLocChange(fLoc, () => {});
+function drawRows() {
+  fRows.replaceChildren(...fStock.map(row => {
+    const el = rowEl({
+      qty: row.qty, location: row.location,
+      used: new Set(fStock.filter(x => x !== row).map(x => x.location)),
+      onQty: v => row.qty = v,
+      onLoc: v => { row.location = v; drawRows(); render(); },
+    });
+    if (fStock.length > 1) {
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×'; rm.title = 'Retirer ce lieu';
+      rm.onclick = () => { fStock = fStock.filter(x => x !== row); drawRows(); };
+      el.append(rm);
+    }
+    return el;
+  }));
+}
+$('#fAddRow').onclick = () => {
+  fStock.push({location: null, qty: 1});
+  drawRows();
+  fRows.lastElementChild.querySelector('select').focus();
+};
 
 $('#itemForm').onsubmit = async e => {
   e.preventDefault();
   checkName();
   if (fSubmit.disabled) return fName.focus();
   const it = editing;
-  const body = {name: fName.value, qty: toQty(fQty.value), location: fLoc.value === NEW_LOC ? '' : fLoc.value};
+  const body = {name: fName.value, stock: fStock.map(r => ({location: r.location || '', qty: r.qty}))};
   const pick = chosen ? chosen.pick : {kind: 'none'};
   if (pick.kind === 'url') {
     // Si l'image choisie ne se télécharge pas, le serveur essaie les suivantes.
@@ -565,7 +636,7 @@ $('#itemForm').onsubmit = async e => {
   fSubmit.disabled = true; fSubmit.textContent = '…';
   try {
     const d = it ? await api('PUT', '/api/items/' + it.id, body) : await api('POST', '/api/items', body);
-    if (!it) pref('inv.lastLoc', body.location);
+    if (!it) pref('inv.lastLoc', body.stock[0].location);
     dlg.close(); setData(d);
   } catch (err) {
     if (err.status === 409) { $('#fNameErr').textContent = err.message; fName.classList.add('bad'); }
@@ -585,7 +656,7 @@ function drawLocs() {
   const locs = sortedLocs();
   $('#locEmpty').hidden = locs.length > 0;
   $('#locList').replaceChildren(...locs.map(l => {
-    const n = state.items.filter(i => i.location === l).length;
+    const n = state.items.filter(i => i.stock.some(r => r.location === l)).length;
     const li = document.createElement('li');
     const name = document.createElement('span'); name.className = 'n'; name.textContent = l;
     const count = document.createElement('small'); count.textContent = n;
@@ -598,7 +669,7 @@ function drawLocs() {
       catch (e) { toast(e.message, true); }
     };
     del.onclick = async () => {
-      if (!await confirmBox('Supprimer le lieu « ' + l + ' » ?', n ? 'Les objets rangés ici resteront dans l\'inventaire, sans lieu.' : '')) return;
+      if (!await confirmBox('Supprimer le lieu « ' + l + ' » ?', n ? 'Les quantités rangées ici passeront « Aucun lieu ».' : '')) return;
       try { setData(await api('DELETE', '/api/locations/' + encodeURIComponent(l), {})); drawLocs(); }
       catch (e) { toast(e.message, true); }
     };

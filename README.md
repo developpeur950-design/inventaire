@@ -51,7 +51,8 @@ Sur téléphone ou sur PC, ouvrez l'adresse HTTPS puis « Ajouter à l'écran d'
 
 ## Données
 
-- `inventaire.json` : la liste des objets et des lieux.
+- `inventaire.json` : la liste des objets et des lieux. Un objet peut être rangé dans
+  plusieurs lieux, avec une quantité pour chacun (les anciens fichiers sont convertis automatiquement).
 - `images/` : les images, téléchargées sur le PC.
 
 Pour sauvegarder, copiez ces deux éléments.
